@@ -56,6 +56,16 @@ const newChar2TouchFrameCount = 4;
 const newChar2TouchFrameWidth = 295 / newChar2TouchFrameCount;
 const newChar2TouchFrameHeight = 115;
 
+// 角色4的圖片精靈資訊
+const newChar3FrameCount = 15;
+const newChar3FrameWidth = 835 / newChar3FrameCount;
+const newChar3FrameHeight = 85;
+
+// 角色5的圖片精靈資訊
+const newChar4FrameCount = 8;
+const newChar4FrameWidth = 491 / newChar4FrameCount;
+const newChar4FrameHeight = 70;
+
 // 角色狀態
 let x, y;
 let speed = 5;
@@ -84,16 +94,39 @@ let animationNewChar2 = [];
 let newChar2X, newChar2Y;
 let spriteSheetNewChar2Touch;
 let animationNewChar2Touch = [];
+let spriteSheetNewChar3;
+let animationNewChar3 = [];
+let newChar3X, newChar3Y;
+let spriteSheetNewChar4;
+let animationNewChar4 = [];
+let newChar4X, newChar4Y;
 
 // 測驗相關變數
-let table; // 用於儲存 CSV 資料
-let questions = [];
-let currentQuestionIndex = 0;
-let quizState = "ASKING"; // "ASKING", "FEEDBACK"
-let feedbackTimer = 0;
-let currentFeedbackMsg = "";
+let tableChar2, tableChar3, tableChar4; // 用於儲存 CSV 資料
 let chatInput;
+let activeChar = 0; // 0: 無, 2: 角色2, 3: 角色3, 4: 角色4
+
+// 角色2 (newChar) 的測驗狀態
+let questionsChar2 = [];
+let currentQuestionIndexChar2 = 0;
+let quizStateChar2 = "ASKING";
+let feedbackTimerChar2 = 0;
 let char2Dialog = "需要我解答嗎?";
+
+// 角色3 (newChar2) 的測驗狀態
+let questionsChar3 = [];
+let currentQuestionIndexChar3 = 0;
+let quizStateChar3 = "ASKING";
+let feedbackTimerChar3 = 0;
+let char3Dialog = "我也來考考你!";
+
+// 角色4 (newChar3) 的測驗狀態
+let questionsChar4 = [];
+let currentQuestionIndexChar4 = 0;
+let quizStateChar4 = "ASKING";
+let feedbackTimerChar4 = 0;
+let char4Dialog = "換我出題囉!";
+let char5Dialog = "我是提示小幫手";
 
 function preload() {
   // 預載入圖片精靈檔案
@@ -107,7 +140,11 @@ function preload() {
   spriteSheetNewCharFall = loadImage('2/fall_down/fall_down_2.png'); // 載入跌倒動畫
   spriteSheetNewChar2 = loadImage('3/stop/stop_3.png');
   spriteSheetNewChar2Touch = loadImage('3/touch/touch_3.png');
-  table = loadTable('questions.csv', 'csv', 'header'); // 載入使用雙引號括起來的 CSV 檔案
+  spriteSheetNewChar3 = loadImage('4/stop/stop4_all.png');
+  spriteSheetNewChar4 = loadImage('5/stop5/stop5_all.png');
+  tableChar2 = loadTable('questions.csv', 'csv', 'header');
+  tableChar3 = loadTable('questions_char3.csv', 'csv', 'header');
+  tableChar4 = loadTable('questions_char4.csv', 'csv', 'header');
 }
 
 function setup() {
@@ -118,17 +155,25 @@ function setup() {
   startY = y;
 
   // 初始化新角色的固定位置，使其不受主角移動影響
-  newCharX = x - 150;
+  newCharX = x - 220;
   newCharY = startY + 60;
 
   // 初始化右邊新角色的固定位置
-  newChar2X = x + 250;
+  newChar2X = x + 150;
   newChar2Y = startY + 60;
+
+  // 初始化角色4的固定位置 (在角色3右邊)
+  newChar3X = newChar2X + 220;
+  newChar3Y = startY + 60;
+
+  // 初始化角色5的固定位置 (在角色2左邊)
+  newChar4X = newCharX - 220;
+  newChar4Y = startY + 60;
 
   // 建立文字輸入框
   chatInput = createInput('');
   chatInput.position(-width, -height); // 先藏在畫面外
-  chatInput.changed(updateChar2Dialog);
+  chatInput.changed(handleInput); // 改為通用的輸入處理函式
   loadQuestions(); // 從 CSV 載入測驗題目
 
   // 從圖片精靈中切割出靜止動畫的每一格
@@ -177,6 +222,18 @@ function setup() {
   for (let i = 0; i < newChar2TouchFrameCount; i++) {
     let img = spriteSheetNewChar2Touch.get(i * newChar2TouchFrameWidth, 0, newChar2TouchFrameWidth, newChar2TouchFrameHeight);
     animationNewChar2Touch.push(img);
+  }
+
+  // 從圖片精靈中切割出角色4的每一格
+  for (let i = 0; i < newChar3FrameCount; i++) {
+    let img = spriteSheetNewChar3.get(i * newChar3FrameWidth, 0, newChar3FrameWidth, newChar3FrameHeight);
+    animationNewChar3.push(img);
+  }
+
+  // 從圖片精靈中切割出角色5的每一格
+  for (let i = 0; i < newChar4FrameCount; i++) {
+    let img = spriteSheetNewChar4.get(i * newChar4FrameWidth, 0, newChar4FrameWidth, newChar4FrameHeight);
+    animationNewChar4.push(img);
   }
 
   // 從圖片精靈中切割出新角色微笑動畫的每一格
@@ -242,8 +299,47 @@ function draw() {
     currentImage = animationIdle[currentFrame % animationIdle.length];
   }
 
-  // --- 繪製新角色 (角色2) ---
   let isNearChar2 = dist(x, y, newCharX, newCharY) < 200;
+  let isNearChar3 = dist(x, y, newChar2X, newChar2Y) < 200;
+  let isNearChar4 = dist(x, y, newChar3X, newChar3Y) < 200;
+
+  // 判斷目前與哪個角色互動
+  activeChar = 0;
+  if (isNearChar2 && !isChar2Fallen) {
+    activeChar = 2;
+  } else if (x > newChar2X) {
+    // 當走到角色3右邊時，優先判斷角色4，角色3不再提問
+    if (isNearChar4) activeChar = 4;
+  } else if (isNearChar3) {
+    activeChar = 3;
+  }
+
+  // 設定角色5的提示對話
+  char5Dialog = "我是提示小幫手"; // 預設對話
+  if (activeChar === 2 && questionsChar2.length > 0 && questionsChar2[currentQuestionIndexChar2].showHint) {
+    char5Dialog = "提示: " + questionsChar2[currentQuestionIndexChar2].hint;
+  } else if (activeChar === 3 && questionsChar3.length > 0 && questionsChar3[currentQuestionIndexChar3].showHint) {
+    char5Dialog = "提示: " + questionsChar3[currentQuestionIndexChar3].hint;
+  } else if (activeChar === 4 && questionsChar4.length > 0 && questionsChar4[currentQuestionIndexChar4].showHint) {
+    char5Dialog = "提示: " + questionsChar4[currentQuestionIndexChar4].hint;
+  }
+
+  // 繪製角色5
+  push();
+  translate(newChar4X, newChar4Y);
+  image(animationNewChar4[floor(currentFrame / 4) % animationNewChar4.length], 0, 0);
+  
+  // 顯示角色5的對話框 (提示文字)
+  textSize(16);
+  let textW5 = textWidth(char5Dialog);
+  fill('#e9edc9');
+  rectMode(CENTER);
+  noStroke();
+  rect(0, -65, textW5 + 20, 30, 5);
+  fill(0);
+  textAlign(CENTER, CENTER);
+  text(char5Dialog, 0, -65);
+  pop();
 
   // 當角色1靠近時，解除跌倒狀態，使其恢復正常
   if (isChar2Fallen && isNearChar2) {
@@ -265,42 +361,38 @@ function draw() {
   } else if (isNearChar2) {
     // 靠近時：顯示微笑動畫和對話
     image(animationNewCharSmile[currentFrame % animationNewCharSmile.length], 0, 0);
-    
-    // --- 測驗邏輯 ---
-    if (quizState === "FEEDBACK") {
-      char2Dialog = currentFeedbackMsg;
-      if (millis() > feedbackTimer) {
-        quizState = "ASKING";
-        if (questions[currentQuestionIndex].solved) {
-          questions[currentQuestionIndex].solved = false;
-          currentQuestionIndex = (currentQuestionIndex + 1) % questions.length;
+
+    // --- 角色2 測驗邏輯 ---
+    if (quizStateChar2 === "FEEDBACK") {
+      // 顯示回饋訊息 (這裡直接使用 char2Dialog，因為在 handleInput 中已經設定了)
+      if (millis() > feedbackTimerChar2) {
+        quizStateChar2 = "ASKING";
+        if (questionsChar2[currentQuestionIndexChar2].solved) {
+          questionsChar2[currentQuestionIndexChar2].solved = false;
+          currentQuestionIndexChar2 = (currentQuestionIndexChar2 + 1) % questionsChar2.length;
         }
       }
-    } else if (questions.length > 0) {
-      char2Dialog = questions[currentQuestionIndex].question;
+    } else if (questionsChar2.length > 0) {
+      char2Dialog = questionsChar2[currentQuestionIndexChar2].question;
     }
-    // ---------------
 
     // 顯示對話文字
     textSize(16);
     let textW = textWidth(char2Dialog);
-    
     fill('#e9edc9');
     rectMode(CENTER);
     noStroke();
-    rect(0, -65, textW + 20, 30, 5); // 繪製方框背景，顏色 e9edc9，涵蓋文字
-
-    textAlign(CENTER, CENTER);
+    rect(0, -65, textW + 20, 30, 5);
     fill(0);
-    text(char2Dialog, 0, -65); // 在方框中顯示文字
-
+    textAlign(CENTER, CENTER);
+    text(char2Dialog, 0, -65);
   } else {
     image(animationNewChar[currentFrame % animationNewChar.length], 0, 0);
   }
   pop();
 
   // --- 繪製角色1的作答框 ---
-  if (isNearChar2 && !isChar2Fallen) {
+  if (activeChar !== 0) {
     const inputBoxY = y - 150;
     const labelText = "請作答：";
     
@@ -325,23 +417,90 @@ function draw() {
     chatInput.position(x - boxWidth / 2 + 15 + labelWidth, inputBoxY - chatInput.height / 2);
   } else {
     chatInput.position(-width, -height); // 移出畫面外
-    if (!isChar2Fallen) {
-      char2Dialog = "需要我解答嗎?"; // 重置對話
-    }
+    // 重置對話
+    if (!isChar2Fallen) char2Dialog = "需要我解答嗎?";
+    char3Dialog = "我也來考考你!";
+    char4Dialog = "換我出題囉!";
   }
 
   // 繪製右邊新角色
   push();
   translate(newChar2X, newChar2Y);
+  push(); // 新增 push 以隔離翻轉效果，只針對圖片翻轉
   if (x > newChar2X) {
     scale(-1, 1); // 角色3原圖朝左，當角色1在右邊時，水平翻轉使其朝向右邊
   }
 
-  // 判斷角色1是否接近角色3 (距離小於 200)
-  if (dist(x, y, newChar2X, newChar2Y) < 200) {
+  if (isNearChar3) {
     image(animationNewChar2Touch[currentFrame % animationNewChar2Touch.length], 0, 0);
   } else {
     image(animationNewChar2[currentFrame % animationNewChar2.length], 0, 0);
+  }
+  pop(); // 結束翻轉效果，讓接下來的對話框不被翻轉
+
+  if (isNearChar3) {
+    
+    // 只有當 activeChar 為 3 時才顯示對話與測驗 (避免在右側時顯示)
+    if (activeChar === 3) {
+      // --- 角色3 測驗邏輯 ---
+      if (quizStateChar3 === "FEEDBACK") {
+        if (millis() > feedbackTimerChar3) {
+          quizStateChar3 = "ASKING";
+          if (questionsChar3[currentQuestionIndexChar3].solved) {
+            questionsChar3[currentQuestionIndexChar3].solved = false;
+            currentQuestionIndexChar3 = (currentQuestionIndexChar3 + 1) % questionsChar3.length;
+          }
+        }
+      } else if (questionsChar3.length > 0) {
+        char3Dialog = questionsChar3[currentQuestionIndexChar3].question;
+      }
+
+      // 顯示對話文字
+      textSize(16);
+      let textW = textWidth(char3Dialog);
+      fill('#e9edc9');
+      rectMode(CENTER);
+      noStroke();
+      rect(0, -85, textW + 20, 30, 5);
+      fill(0);
+      textAlign(CENTER, CENTER);
+      text(char3Dialog, 0, -85);
+    }
+  }
+  pop();
+
+  // 繪製角色4
+  push();
+  translate(newChar3X, newChar3Y);
+  image(animationNewChar3[currentFrame % animationNewChar3.length], 0, 0);
+  
+  if (isNearChar4) {
+    // 只有當 activeChar 為 4 時才顯示對話與測驗
+    if (activeChar === 4) {
+      // --- 角色4 測驗邏輯 ---
+      if (quizStateChar4 === "FEEDBACK") {
+        if (millis() > feedbackTimerChar4) {
+          quizStateChar4 = "ASKING";
+          if (questionsChar4[currentQuestionIndexChar4].solved) {
+            questionsChar4[currentQuestionIndexChar4].solved = false;
+            currentQuestionIndexChar4 = (currentQuestionIndexChar4 + 1) % questionsChar4.length;
+          }
+        }
+      } else if (questionsChar4.length > 0) {
+        char4Dialog = questionsChar4[currentQuestionIndexChar4].question;
+      }
+
+      // 顯示對話文字
+      textSize(16);
+      let textW = textWidth(char4Dialog);
+      fill('#e9edc9');
+      rectMode(CENTER);
+      noStroke();
+      rect(0, -65, textW + 20, 30, 5);
+      fill(0);
+      textAlign(CENTER, CENTER);
+      text(char4Dialog, 0, -65);
+    }
   }
   pop();
 
@@ -407,36 +566,57 @@ function keyReleased() {
 
 // 從 CSV 檔案載入題目
 function loadQuestions() {
-  questions = []; // 清空陣列
-  for (let r = 0; r < table.getRowCount(); r++) {
-    let row = table.getRow(r);
-    questions.push({
-      question: row.getString('question'),
-      answer: row.getString('answer'),
-      correctMsg: row.getString('correct_msg'),
-      wrongMsg: row.getString('wrong_msg'),
-      hint: row.getString('hint'),
-      solved: false // 預設為未解決
-    });
+  // 建立一個輔助函式來讀取題目，這樣可以為每個角色產生獨立的題目陣列
+  function createQuestionSet(sourceTable) {
+    let qSet = [];
+    for (let r = 0; r < sourceTable.getRowCount(); r++) {
+      let row = sourceTable.getRow(r);
+      qSet.push({
+        question: row.getString('question'),
+        answer: row.getString('answer'),
+        correctMsg: row.getString('correct_msg'),
+        wrongMsg: row.getString('wrong_msg'),
+        hint: row.getString('hint'),
+        solved: false,
+        showHint: false
+      });
+    }
+    return qSet;
   }
+
+  questionsChar2 = createQuestionSet(tableChar2);
+  questionsChar3 = createQuestionSet(tableChar3);
+  questionsChar4 = createQuestionSet(tableChar4);
 }
 
-function updateChar2Dialog() {
+function handleInput() {
   const inputText = this.value();
   this.value('');
 
-  if (questions.length > 0 && quizState === "ASKING") {
-    let currentQ = questions[currentQuestionIndex];
-    if (inputText.trim() === currentQ.answer) {
-      currentFeedbackMsg = currentQ.correctMsg;
-      currentQ.solved = true;
-    } else {
-      currentFeedbackMsg = `${currentQ.wrongMsg} (${currentQ.hint})`;
-      currentQ.solved = false;
-    }
-    quizState = "FEEDBACK";
-    feedbackTimer = millis() + 2000; // 顯示回饋 2 秒
+  // 根據目前互動的角色來處理答案
+  if (activeChar === 2 && questionsChar2.length > 0 && quizStateChar2 === "ASKING") {
+    checkAnswer(inputText, questionsChar2, currentQuestionIndexChar2, (msg) => { char2Dialog = msg; }, (state) => { quizStateChar2 = state; }, (timer) => { feedbackTimerChar2 = timer; });
+  } else if (activeChar === 3 && questionsChar3.length > 0 && quizStateChar3 === "ASKING") {
+    checkAnswer(inputText, questionsChar3, currentQuestionIndexChar3, (msg) => { char3Dialog = msg; }, (state) => { quizStateChar3 = state; }, (timer) => { feedbackTimerChar3 = timer; });
+  } else if (activeChar === 4 && questionsChar4.length > 0 && quizStateChar4 === "ASKING") {
+    checkAnswer(inputText, questionsChar4, currentQuestionIndexChar4, (msg) => { char4Dialog = msg; }, (state) => { quizStateChar4 = state; }, (timer) => { feedbackTimerChar4 = timer; });
   }
+}
+
+// 通用的檢查答案函式
+function checkAnswer(input, qArray, index, setDialog, setState, setTimer) {
+  let currentQ = qArray[index];
+  if (input.trim() === currentQ.answer) {
+    setDialog(currentQ.correctMsg);
+    currentQ.solved = true;
+    currentQ.showHint = false;
+  } else {
+    setDialog(currentQ.wrongMsg); // 移除這裡的提示，因為已經顯示在角色5了
+    currentQ.solved = false;
+    currentQ.showHint = true;
+  }
+  setState("FEEDBACK");
+  setTimer(millis() + 2000);
 }
 
 function windowResized() {
